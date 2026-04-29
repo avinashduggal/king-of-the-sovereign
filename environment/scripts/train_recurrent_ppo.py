@@ -1,13 +1,14 @@
-"""Train a PPO agent on Sovereign-v0 using Stable-Baselines3.
+"""Train a Recurrent PPO agent on Sovereign-v0 using sb3-contrib.
 
-PPO is the default recommendation for this env: on-policy, handles the
-``Dict`` observation natively via ``MultiInputPolicy``, and is robust to
-the mixed-scale rewards (per-step O(0.5), terminals O(50)).
+The Sovereign observation is technically Markov (full state is exposed),
+but legitimacy / posture / occupation dynamics have long-horizon
+consequences that an LSTM policy can summarise more compactly than a
+feed-forward MLP. Useful as a robustness comparison.
 
-Requires the ``[train]`` extra: ``pip install -e ".[train]"``.
+Requires the ``[train]`` extra (which pulls in sb3-contrib).
 
 Usage:
-    python scripts/train_ppo.py [--timesteps 200000] [--preset full] [--n-envs 8]
+    python scripts/train_recurrent_ppo.py [--timesteps 200000] [--preset full]
 """
 
 from __future__ import annotations
@@ -22,29 +23,29 @@ def main() -> None:
     parser.add_argument("--timesteps", type=int, default=200_000)
     parser.add_argument("--preset", default="full")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--n-envs", type=int, default=8)
+    parser.add_argument("--n-envs", type=int, default=4)
     parser.add_argument("--eval-episodes", type=int, default=30)
-    parser.add_argument("--save", default=None, help="Path to save the model.")
-    parser.add_argument("--tb", action="store_true", help="Enable TensorBoard logging.")
+    parser.add_argument("--save", default=None)
+    parser.add_argument("--tb", action="store_true")
     args = parser.parse_args()
 
     try:
-        from stable_baselines3 import PPO
+        from sb3_contrib import RecurrentPPO
     except ImportError as exc:
         raise SystemExit(
-            "stable-baselines3 is not installed.\n"
+            "sb3-contrib is not installed.\n"
             "Install with: pip install -e \".[train]\""
         ) from exc
 
     train_env = make_vec_env(preset=args.preset, n_envs=args.n_envs, seed=args.seed)
 
-    model = PPO(
-        "MultiInputPolicy",
+    model = RecurrentPPO(
+        "MultiInputLstmPolicy",
         train_env,
         verbose=1,
         seed=args.seed,
-        n_steps=512,
-        batch_size=256,
+        n_steps=256,
+        batch_size=128,
         gamma=0.99,
         gae_lambda=0.95,
         ent_coef=0.01,
@@ -55,14 +56,14 @@ def main() -> None:
     if args.save:
         save_path = args.save
     else:
-        run_dir = make_run_dir("ppo", args.preset, args.timesteps)
+        run_dir = make_run_dir("recppo", args.preset, args.timesteps)
         save_path = str(run_dir / "model.zip")
     model.save(save_path)
     print(f"saved model to {save_path}")
 
     eval_env = make_env(preset=args.preset)
     stats = evaluate_model(model, eval_env, episodes=args.eval_episodes, seed=args.seed + 1000)
-    print(f"PPO/{args.preset}  {stats.pretty()}")
+    print(f"RecurrentPPO/{args.preset}  {stats.pretty()}")
 
 
 if __name__ == "__main__":
