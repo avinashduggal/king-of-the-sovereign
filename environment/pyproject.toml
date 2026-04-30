@@ -20,6 +20,7 @@ train = [
     "stable-baselines3>=2.0",
     "sb3-contrib>=2.0",
     "torch>=2.0",
+    "torch_geometric>=2.5",
 ]
 test = [
     "pytest>=7.0",
