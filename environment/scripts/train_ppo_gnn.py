@@ -88,6 +88,15 @@ def main() -> None:
     )
     from models.gnn_policy import GNNSovereignPolicy
     from sovereign.game_map import GameMap
+    from utils.logging_utils import TrainingProgressCallback, setup_logging
+
+    # ---- run directory + logging ---------------------------------------------------
+    if args.save:
+        run_dir = None
+        log = setup_logging(log_path=None)
+    else:
+        run_dir = make_run_dir("gnn_ppo", args.preset, args.total_timesteps)
+        log = setup_logging(log_path=run_dir)
 
     # ---- environment ---------------------------------------------------------------
     train_env = make_vec_env(preset=args.preset, n_envs=args.n_envs, seed=args.seed)
@@ -116,37 +125,36 @@ def main() -> None:
         ent_coef=args.ent_coef,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        verbose=1,
+        verbose=0,
         seed=args.seed,
         device=args.device,
         tensorboard_log=str(tb_dir()) if args.tb else None,
     )
 
-    print(
-        f"\nGNN-PPO | preset={args.preset} | envs={args.n_envs} | "
-        f"D={args.gnn_output} | device={args.device}\n"
-        f"features_dim = {model.policy.features_extractor.features_dim}\n"
+    log.info(
+        "GNN-PPO | preset=%s | envs=%d | D=%d | device=%s | features_dim=%d",
+        args.preset,
+        args.n_envs,
+        args.gnn_output,
+        args.device,
+        model.policy.features_extractor.features_dim,
     )
 
     # ---- training ------------------------------------------------------------------
-    model.learn(total_timesteps=args.total_timesteps, progress_bar=False)
+    callback = TrainingProgressCallback(args.total_timesteps, log)
+    model.learn(total_timesteps=args.total_timesteps, callback=callback, progress_bar=False)
 
     # ---- save ----------------------------------------------------------------------
-    if args.save:
-        save_path = args.save
-    else:
-        run_dir = make_run_dir("gnn_ppo", args.preset, args.total_timesteps)
-        save_path = str(run_dir / "model.zip")
-
+    save_path = args.save if args.save else str(run_dir / "model.zip")  # type: ignore[operator]
     model.save(save_path)
-    print(f"Saved model → {save_path}")
+    log.info("Saved model → %s", save_path)
 
     # ---- evaluation ----------------------------------------------------------------
     eval_env = make_env(preset=args.preset)
     stats = evaluate_model(
         model, eval_env, episodes=args.eval_episodes, seed=args.seed + 1000
     )
-    print(f"GNN-PPO/{args.preset}  {stats.pretty()}")
+    log.info("GNN-PPO/%s  %s", args.preset, stats.pretty())
 
 
 if __name__ == "__main__":
