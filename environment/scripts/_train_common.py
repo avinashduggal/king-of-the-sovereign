@@ -165,8 +165,8 @@ def evaluate_model(
 
 def models_dir() -> Path:
     """Resolve scripts/../models, creating it if needed."""
-    here = Path(__file__).resolve().parent
-    out = here.parent / "models"
+    here = Path(__file__).resolve().parent.parent
+    out = here.parent / "checkpoints"
     out.mkdir(parents=True, exist_ok=True)
     return out
 
