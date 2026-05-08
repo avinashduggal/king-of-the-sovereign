@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from _train_common import evaluate_model, make_env, make_run_dir, make_vec_env, tb_dir
+from _train_common import evaluate_model, load_or_init_model, make_env, make_run_dir, make_vec_env, tb_dir
 
 
 def main() -> None:
@@ -30,6 +30,10 @@ def main() -> None:
     parser.add_argument("--eval-episodes", type=int, default=30)
     parser.add_argument("--save", default=None, help="Path to save the model.")
     parser.add_argument("--tb", action="store_true", help="Enable TensorBoard logging.")
+    parser.add_argument(
+        "--load-checkpoint", type=Path, default=None, metavar="PATH",
+        help="Path to a model.zip to resume training from.",
+    )
     args = parser.parse_args()
 
     try:
@@ -51,9 +55,9 @@ def main() -> None:
 
     train_env = make_vec_env(preset=args.preset, n_envs=args.n_envs, seed=args.seed)
 
-    model = PPO(
-        "MultiInputPolicy",
-        train_env,
+    model = load_or_init_model(
+        PPO, args.load_checkpoint, train_env,
+        policy="MultiInputPolicy",
         verbose=0,
         seed=args.seed,
         n_steps=512,
@@ -64,7 +68,7 @@ def main() -> None:
         tensorboard_log=str(tb_dir()) if args.tb else None,
     )
 
-    log.info("PPO | preset=%s | envs=%d | device=cpu", args.preset, args.n_envs)
+    log.info("PPO | preset=%s | envs=%d | device=cpu | from_ts=%d", args.preset, args.n_envs, model.num_timesteps)
 
     callback = TrainingProgressCallback(args.timesteps, log, algo_name="PPO")
     model.learn(total_timesteps=args.timesteps, callback=callback, progress_bar=False)

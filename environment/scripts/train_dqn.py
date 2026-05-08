@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from _train_common import evaluate_model, make_env, make_run_dir, tb_dir
+from _train_common import evaluate_model, load_or_init_model, make_env, make_run_dir, tb_dir
 
 
 def main() -> None:
@@ -29,6 +29,14 @@ def main() -> None:
     parser.add_argument("--eval-episodes", type=int, default=30)
     parser.add_argument("--save", default=None)
     parser.add_argument("--tb", action="store_true")
+    parser.add_argument(
+        "--load-checkpoint", type=Path, default=None, metavar="PATH",
+        help="Path to a model.zip to resume training from.",
+    )
+    parser.add_argument(
+        "--load-replay-buffer", type=Path, default=None, metavar="PATH",
+        help="Path to a replay_buffer.pkl saved from a previous DQN run.",
+    )
     args = parser.parse_args()
 
     try:
@@ -52,9 +60,9 @@ def main() -> None:
         preset=args.preset, flatten_obs=True, flatten_action=True, seed=args.seed
     )
 
-    model = DQN(
-        "MlpPolicy",
-        train_env,
+    model = load_or_init_model(
+        DQN, args.load_checkpoint, train_env,
+        policy="MlpPolicy",
         verbose=0,
         seed=args.seed,
         learning_starts=1_000,
@@ -68,8 +76,11 @@ def main() -> None:
         learning_rate=5e-4,
         tensorboard_log=str(tb_dir()) if args.tb else None,
     )
+    if args.load_replay_buffer:
+        model.load_replay_buffer(str(args.load_replay_buffer))
+        log.info("Loaded replay buffer ← %s", args.load_replay_buffer)
 
-    log.info("DQN | preset=%s | device=cpu", args.preset)
+    log.info("DQN | preset=%s | device=cpu | from_ts=%d", args.preset, model.num_timesteps)
 
     callback = TrainingProgressCallback(args.timesteps, log, algo_name="DQN")
     model.learn(total_timesteps=args.timesteps, callback=callback, progress_bar=False)
@@ -77,6 +88,10 @@ def main() -> None:
     save_path = args.save if args.save else str(run_dir / "model.zip")  # type: ignore[operator]
     model.save(save_path)
     log.info("Saved model → %s", save_path)
+
+    rb_path = args.save.replace("model.zip", "replay_buffer.pkl") if args.save else str(run_dir / "replay_buffer.pkl")  # type: ignore[operator]
+    model.save_replay_buffer(rb_path)
+    log.info("Saved replay buffer → %s", rb_path)
 
     eval_env = make_env(
         preset=args.preset, flatten_obs=True, flatten_action=True

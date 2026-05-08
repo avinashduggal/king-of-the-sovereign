@@ -177,3 +177,20 @@ def tb_dir() -> Path:
     out = here.parent / "tb_logs"
     out.mkdir(parents=True, exist_ok=True)
     return out
+
+
+def load_or_init_model(algo_class, checkpoint, env, **kwargs):
+    """Load weights from an existing checkpoint or create a fresh model.
+
+    When resuming, ``--timesteps`` in the calling script means *additional*
+    steps on top of whatever ``model.num_timesteps`` already recorded.
+    """
+    if checkpoint is not None:
+        checkpoint = Path(checkpoint)
+        if not checkpoint.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
+        print(f"[resume] Loading checkpoint: {checkpoint}")
+        model = algo_class.load(str(checkpoint), env=env)
+        print(f"[resume] Resuming from {model.num_timesteps:,} timesteps")
+        return model
+    return algo_class(env=env, **kwargs)
