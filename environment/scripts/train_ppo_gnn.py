@@ -96,7 +96,7 @@ def main() -> None:
         log = setup_logging(log_path=None)
     else:
         run_dir = make_run_dir("gnn_ppo", args.preset, args.total_timesteps)
-        log = setup_logging(log_path=run_dir)
+        log = setup_logging(log_path=run_dir, name="gnn_ppo")
 
     # ---- environment ---------------------------------------------------------------
     train_env = make_vec_env(preset=args.preset, n_envs=args.n_envs, seed=args.seed)
@@ -141,7 +141,7 @@ def main() -> None:
     )
 
     # ---- training ------------------------------------------------------------------
-    callback = TrainingProgressCallback(args.total_timesteps, log)
+    callback = TrainingProgressCallback(args.total_timesteps, log, algo_name="GNN-PPO")
     model.learn(total_timesteps=args.total_timesteps, callback=callback, progress_bar=False)
 
     # ---- save ----------------------------------------------------------------------

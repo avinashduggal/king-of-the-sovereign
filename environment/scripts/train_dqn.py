@@ -13,6 +13,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from _train_common import evaluate_model, make_env, make_run_dir, tb_dir
 
@@ -35,6 +39,15 @@ def main() -> None:
             "Install with: pip install -e \".[train]\""
         ) from exc
 
+    from utils.logging_utils import TrainingProgressCallback, setup_logging
+
+    if args.save:
+        run_dir = None
+        log = setup_logging(log_path=None, name="dqn")
+    else:
+        run_dir = make_run_dir("dqn", args.preset, args.timesteps)
+        log = setup_logging(log_path=run_dir, name="dqn")
+
     train_env = make_env(
         preset=args.preset, flatten_obs=True, flatten_action=True, seed=args.seed
     )
@@ -42,7 +55,7 @@ def main() -> None:
     model = DQN(
         "MlpPolicy",
         train_env,
-        verbose=1,
+        verbose=0,
         seed=args.seed,
         learning_starts=1_000,
         buffer_size=100_000,
@@ -55,21 +68,21 @@ def main() -> None:
         learning_rate=5e-4,
         tensorboard_log=str(tb_dir()) if args.tb else None,
     )
-    model.learn(total_timesteps=args.timesteps, progress_bar=False)
 
-    if args.save:
-        save_path = args.save
-    else:
-        run_dir = make_run_dir("dqn", args.preset, args.timesteps)
-        save_path = str(run_dir / "model.zip")
+    log.info("DQN | preset=%s | device=cpu", args.preset)
+
+    callback = TrainingProgressCallback(args.timesteps, log, algo_name="DQN")
+    model.learn(total_timesteps=args.timesteps, callback=callback, progress_bar=False)
+
+    save_path = args.save if args.save else str(run_dir / "model.zip")  # type: ignore[operator]
     model.save(save_path)
-    print(f"saved model to {save_path}")
+    log.info("Saved model → %s", save_path)
 
     eval_env = make_env(
         preset=args.preset, flatten_obs=True, flatten_action=True
     )
     stats = evaluate_model(model, eval_env, episodes=args.eval_episodes, seed=args.seed + 1000)
-    print(f"DQN/{args.preset}  {stats.pretty()}")
+    log.info("DQN/%s  %s", args.preset, stats.pretty())
 
 
 if __name__ == "__main__":

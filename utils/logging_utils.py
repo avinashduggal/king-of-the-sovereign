@@ -11,8 +11,10 @@ from stable_baselines3.common.logger import KVWriter
 from tqdm import tqdm
 
 
-def setup_logging(log_path: Path | None = None) -> logging.Logger:
-    """Return a configured logger named 'gnn_ppo'.
+def setup_logging(
+    log_path: Path | None = None, name: str = "train"
+) -> logging.Logger:
+    """Return a configured logger.
 
     Attaches a console handler (INFO) and, when *log_path* is given,
     a file handler writing to ``log_path/train.log``.
@@ -22,7 +24,7 @@ def setup_logging(log_path: Path | None = None) -> logging.Logger:
         datefmt="%H:%M:%S",
     )
 
-    logger = logging.getLogger("gnn_ppo")
+    logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
 
@@ -71,10 +73,16 @@ class TrainingProgressCallback(BaseCallback):
     metrics from name_to_value.
     """
 
-    def __init__(self, total_timesteps: int, logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        total_timesteps: int,
+        logger: logging.Logger,
+        algo_name: str = "Training",
+    ) -> None:
         super().__init__(verbose=0)
         self._total = total_timesteps
         self._log = logger
+        self._algo_name = algo_name
         self._pbar: tqdm | None = None
         self._last_ts: int = 0
 
@@ -83,7 +91,7 @@ class TrainingProgressCallback(BaseCallback):
         self.model.logger.output_formats.append(_PyLogFormat(self._log))
         self._pbar = tqdm(
             total=self._total,
-            desc="Training GNN-PPO",
+            desc=f"Training {self._algo_name}",
             unit="step",
             dynamic_ncols=True,
         )

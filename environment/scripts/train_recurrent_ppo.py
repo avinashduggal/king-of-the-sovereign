@@ -14,6 +14,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from _train_common import evaluate_model, make_env, make_run_dir, make_vec_env, tb_dir
 
@@ -37,12 +41,21 @@ def main() -> None:
             "Install with: pip install -e \".[train]\""
         ) from exc
 
+    from utils.logging_utils import TrainingProgressCallback, setup_logging
+
+    if args.save:
+        run_dir = None
+        log = setup_logging(log_path=None, name="recppo")
+    else:
+        run_dir = make_run_dir("recppo", args.preset, args.timesteps)
+        log = setup_logging(log_path=run_dir, name="recppo")
+
     train_env = make_vec_env(preset=args.preset, n_envs=args.n_envs, seed=args.seed)
 
     model = RecurrentPPO(
         "MultiInputLstmPolicy",
         train_env,
-        verbose=1,
+        verbose=0,
         seed=args.seed,
         n_steps=256,
         batch_size=128,
@@ -51,19 +64,19 @@ def main() -> None:
         ent_coef=0.01,
         tensorboard_log=str(tb_dir()) if args.tb else None,
     )
-    model.learn(total_timesteps=args.timesteps, progress_bar=False)
 
-    if args.save:
-        save_path = args.save
-    else:
-        run_dir = make_run_dir("recppo", args.preset, args.timesteps)
-        save_path = str(run_dir / "model.zip")
+    log.info("RecurrentPPO | preset=%s | envs=%d | device=cpu", args.preset, args.n_envs)
+
+    callback = TrainingProgressCallback(args.timesteps, log, algo_name="RecurrentPPO")
+    model.learn(total_timesteps=args.timesteps, callback=callback, progress_bar=False)
+
+    save_path = args.save if args.save else str(run_dir / "model.zip")  # type: ignore[operator]
     model.save(save_path)
-    print(f"saved model to {save_path}")
+    log.info("Saved model → %s", save_path)
 
     eval_env = make_env(preset=args.preset)
     stats = evaluate_model(model, eval_env, episodes=args.eval_episodes, seed=args.seed + 1000)
-    print(f"RecurrentPPO/{args.preset}  {stats.pretty()}")
+    log.info("RecurrentPPO/%s  %s", args.preset, stats.pretty())
 
 
 if __name__ == "__main__":
