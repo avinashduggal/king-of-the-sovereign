@@ -33,7 +33,7 @@ DQN_METRICS = [
 ]
 
 DQN_ALGORITHMS = {"dqn", "qrdqn"}
-PPO_ALGORITHMS = {"ppo", "a2c", "recppo", "gnn_ppo"}
+PPO_ALGORITHMS = {"ppo", "a2c", "recppo", "gnn_ppo", "gat_ppo", "recgat_ppo"}
 
 
 def get_family_metrics(algorithm: str) -> list[str]:
