@@ -25,7 +25,7 @@ class SovereignConfig:
     use_neutral_posture: bool = True
 
     # ---- Episode limits ---------------------------------------------------
-    max_steps: int = 200
+    max_steps: int = 1000
 
     # ---- Initial unit counts ---------------------------------------------
     invader_ground: int = 12
