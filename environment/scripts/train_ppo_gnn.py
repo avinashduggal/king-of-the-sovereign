@@ -60,6 +60,10 @@ def main() -> None:
     parser.add_argument("--eval-episodes", type=int, default=30)
     parser.add_argument("--save", default=None, help="Override model save path")
     parser.add_argument("--tb", action="store_true", help="Enable TensorBoard")
+    parser.add_argument(
+        "--load-checkpoint", type=Path, default=None, metavar="PATH",
+        help="Path to a model.zip to resume training from.",
+    )
     args = parser.parse_args()
 
     # ---- imports (after path is set) -----------------------------------------------
@@ -96,7 +100,7 @@ def main() -> None:
         log = setup_logging(log_path=None)
     else:
         run_dir = make_run_dir("gnn_ppo", args.preset, args.total_timesteps)
-        log = setup_logging(log_path=run_dir)
+        log = setup_logging(log_path=run_dir, name="gnn_ppo")
 
     # ---- environment ---------------------------------------------------------------
     train_env = make_vec_env(preset=args.preset, n_envs=args.n_envs, seed=args.seed)
@@ -105,43 +109,55 @@ def main() -> None:
     game_map = GameMap()
 
     # ---- model ---------------------------------------------------------------------
-    model = PPO(
-        GNNSovereignPolicy,
-        train_env,
-        policy_kwargs=dict(
-            game_map=game_map,
-            gnn_hidden=args.gnn_hidden,
-            gnn_output=args.gnn_output,
-            actor_hidden=args.actor_hidden,
-            critic_hidden=args.critic_hidden,
-        ),
-        learning_rate=args.lr,
-        n_steps=args.n_steps,
-        batch_size=args.batch_size,
-        n_epochs=args.n_epochs,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        ent_coef=args.ent_coef,
-        vf_coef=0.5,
-        max_grad_norm=0.5,
-        verbose=0,
-        seed=args.seed,
-        device=args.device,
-        tensorboard_log=str(tb_dir()) if args.tb else None,
-    )
+    if args.load_checkpoint is not None:
+        checkpoint = Path(args.load_checkpoint)
+        if not checkpoint.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
+        print(f"[resume] Loading checkpoint: {checkpoint}")
+        model = PPO.load(
+            str(checkpoint), env=train_env,
+            custom_objects={"policy_class": GNNSovereignPolicy},
+        )
+        print(f"[resume] Resuming from {model.num_timesteps:,} timesteps")
+    else:
+        model = PPO(
+            GNNSovereignPolicy,
+            train_env,
+            policy_kwargs=dict(
+                game_map=game_map,
+                gnn_hidden=args.gnn_hidden,
+                gnn_output=args.gnn_output,
+                actor_hidden=args.actor_hidden,
+                critic_hidden=args.critic_hidden,
+            ),
+            learning_rate=args.lr,
+            n_steps=args.n_steps,
+            batch_size=args.batch_size,
+            n_epochs=args.n_epochs,
+            gamma=0.99,
+            gae_lambda=0.95,
+            clip_range=0.2,
+            ent_coef=args.ent_coef,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            verbose=0,
+            seed=args.seed,
+            device=args.device,
+            tensorboard_log=str(tb_dir()) if args.tb else None,
+        )
 
     log.info(
-        "GNN-PPO | preset=%s | envs=%d | D=%d | device=%s | features_dim=%d",
+        "GNN-PPO | preset=%s | envs=%d | D=%d | device=%s | features_dim=%d | from_ts=%d",
         args.preset,
         args.n_envs,
         args.gnn_output,
         args.device,
         model.policy.features_extractor.features_dim,
+        model.num_timesteps,
     )
 
     # ---- training ------------------------------------------------------------------
-    callback = TrainingProgressCallback(args.total_timesteps, log)
+    callback = TrainingProgressCallback(args.total_timesteps, log, algo_name="GNN-PPO")
     model.learn(total_timesteps=args.total_timesteps, callback=callback, progress_bar=False)
 
     # ---- save ----------------------------------------------------------------------

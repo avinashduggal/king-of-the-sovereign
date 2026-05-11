@@ -18,10 +18,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+import gymnasium
 import numpy as np
+from gymnasium.wrappers import FlattenObservation
 
 
-class FlattenMultiDiscreteAction:
+class FlattenMultiDiscreteAction(gymnasium.Wrapper):
     """Wrap MultiDiscrete([5, 4, 9]) -> Discrete(180) for value-based agents.
 
     DQN-family agents in SB3 only support Discrete action spaces. This
@@ -30,29 +32,15 @@ class FlattenMultiDiscreteAction:
     """
 
     def __init__(self, env):
-        import gymnasium as gym
-
-        self.env = env
-        self.observation_space = env.observation_space
-        sizes = env.action_space.nvec
+        super().__init__(env)
+        sizes = env.action_space.nvec  # type: ignore[attr-defined]
         self._sizes = tuple(int(s) for s in sizes)
         self._n = int(np.prod(self._sizes))
-        self.action_space = gym.spaces.Discrete(self._n)
-        self.metadata = getattr(env, "metadata", {})
-        self.render_mode = getattr(env, "render_mode", None)
-
-    def reset(self, **kwargs):
-        return self.env.reset(**kwargs)
+        self.action_space = gymnasium.spaces.Discrete(self._n)
 
     def step(self, action):
         a = np.asarray(np.unravel_index(int(action), self._sizes), dtype=np.int64)
         return self.env.step(a)
-
-    def close(self):
-        return self.env.close()
-
-    def render(self):
-        return self.env.render()
 
 
 def make_env(
@@ -62,12 +50,9 @@ def make_env(
     seed: int | None = None,
 ):
     """Build a single Sovereign env with optional wrappers."""
-    import gymnasium as gym
-    from gymnasium.wrappers import FlattenObservation
-
     import sovereign  # noqa: F401  -- registers env ids
 
-    env = gym.make(f"Sovereign-{preset}-v0")
+    env = gymnasium.make(f"Sovereign-{preset}-v0")
     if flatten_obs:
         env = FlattenObservation(env)
     if flatten_action:
@@ -192,3 +177,20 @@ def tb_dir() -> Path:
     out = here.parent / "tb_logs"
     out.mkdir(parents=True, exist_ok=True)
     return out
+
+
+def load_or_init_model(algo_class, checkpoint, env, **kwargs):
+    """Load weights from an existing checkpoint or create a fresh model.
+
+    When resuming, ``--timesteps`` in the calling script means *additional*
+    steps on top of whatever ``model.num_timesteps`` already recorded.
+    """
+    if checkpoint is not None:
+        checkpoint = Path(checkpoint)
+        if not checkpoint.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
+        print(f"[resume] Loading checkpoint: {checkpoint}")
+        model = algo_class.load(str(checkpoint), env=env)
+        print(f"[resume] Resuming from {model.num_timesteps:,} timesteps")
+        return model
+    return algo_class(env=env, **kwargs)
